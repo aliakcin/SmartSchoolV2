@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		1B84508C2E9BAF2000529DC9 /* SmartSchoolV2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SmartSchoolV2.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1B8450A82E9BD58800529DC9 /* SmartSchoolV2.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = SmartSchoolV2.xcodeproj; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -32,6 +33,7 @@
 		1B8450832E9BAF2000529DC9 = {
 			isa = PBXGroup;
 			children = (
+				1B8450A82E9BD58800529DC9 /* SmartSchoolV2.xcodeproj */,
 				1B84508E2E9BAF2000529DC9 /* SmartSchoolV2 */,
 				1B84508D2E9BAF2000529DC9 /* Products */,
 			);
@@ -42,6 +44,11 @@
 			children = (
 				1B84508C2E9BAF2000529DC9 /* SmartSchoolV2.app */,
 			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1BA8BD742E9BD70200518315 /* Products */ = {
+			isa = PBXGroup;
 			name = Products;
 			sourceTree = "<group>";
 		};
@@ -97,6 +104,12 @@
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1B84508D2E9BAF2000529DC9 /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = 1BA8BD742E9BD70200518315 /* Products */;
+					ProjectRef = 1B8450A82E9BD58800529DC9 /* SmartSchoolV2.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				1B84508B2E9BAF2000529DC9 /* SmartSchoolV2 */,
