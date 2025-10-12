@@ -20,7 +20,7 @@ struct DashboardView: View {
                 }
             
             // Attendance Tab
-            AttendanceView()
+            AttendanceView(user: user)
                 .tabItem {
                     Image(systemName: "checkmark.circle")
                     Text("Attendance")
@@ -183,22 +183,170 @@ struct DashboardCard: View {
 }
 
 struct AttendanceView: View {
+    var user: User?
+    @StateObject private var viewModel = AttendanceViewModel()
+    @State private var showingDepartmentSheet = false
+    
     var body: some View {
         NavigationView {
             VStack {
-                Image(systemName: "checkmark.circle")
-                    .font(.largeTitle)
-                    .foregroundColor(.green)
-                Text("Attendance")
-                    .font(.title)
-                    .padding()
-                Text("Attendance tracking features will be implemented here")
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding()
-                Spacer()
+                // Display the current period at the top left
+                HStack {
+                    if let period = viewModel.currentPeriod {
+                        Text("\(period.periodNo). Period")
+                            .font(.headline)
+                            .padding(.leading)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                }
+
+                if viewModel.isLoading && viewModel.attendanceRecords.isEmpty {
+                    ProgressView("Loading...")
+                } else if !viewModel.attendanceRecords.isEmpty {
+                    AttendanceRecordList(viewModel: viewModel)
+                } else {
+                    // Spacer to push the EmptyAttendanceView to the center
+                    Spacer()
+                    EmptyAttendanceView(viewModel: viewModel, showingDepartmentSheet: $showingDepartmentSheet)
+                    Spacer()
+                }
             }
             .navigationTitle("Attendance")
+            .navigationBarItems(trailing:
+                Group {
+                    if !viewModel.attendanceRecords.isEmpty {
+                        Button("Submit") {
+                            viewModel.submitAttendance()
+                        }
+                    }
+                }
+            )
+            .onAppear {
+                if let user = user {
+                    viewModel.setUser(user)
+                }
+            }
+            .alert(item: $viewModel.errorMessage) { error in
+                Alert(
+                    title: Text("Info"),
+                    message: Text(error),
+                    dismissButton: .default(Text("OK")) {
+                        viewModel.clearError()
+                    }
+                )
+            }
+            .sheet(isPresented: $showingDepartmentSheet) {
+                DepartmentSelectionView(
+                    departments: viewModel.departments,
+                    onSelect: { department in
+                        viewModel.selectedDepartment = department
+                        viewModel.loadStudents()
+                        showingDepartmentSheet = false
+                    },
+                    onDismiss: {
+                        showingDepartmentSheet = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+// Extension to allow String to be used with .alert(item:)
+extension String: Identifiable {
+    public var id: String { self }
+}
+
+struct EmptyAttendanceView: View {
+    @ObservedObject var viewModel: AttendanceViewModel
+    @Binding var showingDepartmentSheet: Bool
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.green)
+            
+            Text("Take Attendance")
+                .font(.title)
+                .fontWeight(.bold)
+            
+            Text("Select a class to begin taking attendance.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            
+            Button(action: {
+                viewModel.loadDepartments()
+                showingDepartmentSheet = true
+            }) {
+                Label("Select Class", systemImage: "person.2.fill")
+                    .font(.headline)
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+            }
+            .padding()
+        }
+        .padding()
+    }
+}
+
+struct AttendanceRecordList: View {
+    @ObservedObject var viewModel: AttendanceViewModel
+    
+    var body: some View {
+        List {
+            ForEach($viewModel.attendanceRecords) { $record in
+                HStack {
+                    Text(record.studentName)
+                    Spacer()
+                    Picker("Status", selection: $record.status) {
+                        ForEach(AttendanceStatus.allCases, id: \.self) { status in
+                            Text(status.rawValue).tag(status)
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                    .frame(maxWidth: 120)
+                }
+            }
+        }
+    }
+}
+
+struct DepartmentSelectionView: View {
+    let departments: [Department]
+    var onSelect: (Department) -> Void
+    var onDismiss: () -> Void
+    
+    var body: some View {
+        NavigationView {
+            List(departments) { department in
+                Button(action: {
+                    onSelect(department)
+                }) {
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(department.departmentName)
+                                .font(.headline)
+                            Text(department.departmentCode)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                    }
+                }
+            }
+            .navigationTitle("Select Class")
+            .navigationBarItems(
+                leading: Button("Cancel") {
+                    onDismiss()
+                }
+            )
         }
     }
 }
