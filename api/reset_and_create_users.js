@@ -57,6 +57,8 @@ async function resetAndCreateTestUsers() {
         passHash: hashedPassword,
         role: user.role,
         isLocked: false,
+        lastLoginAt: null,
+        passwordUpdatedAt: new Date(),
         createdAt: new Date(),
         ascTeacherUid: user.ascTeacherUid,
         smartSchoolId: user.smartSchoolId
