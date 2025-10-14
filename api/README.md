@@ -1,16 +1,21 @@
 # Smart School API
 
-This is the backend API for the Smart School mobile application.
+This is the API for the Smart School application. It provides RESTful endpoints for managing students, courses, grades, and other school-related data.
 
-## Setup Instructions
+## Versions
 
-1. **Install dependencies:**
+- **MongoDB Version**: The original version using MongoDB as the database
+- **SQL Server Version**: New version using SQL Server as the database (see [README_SQL_SERVER.md](README_SQL_SERVER.md))
+
+## Quick Start (MongoDB Version)
+
+1. Install dependencies:
    ```bash
    cd api
    npm install
    ```
 
-2. **Start the server:**
+2. Start the server:
    ```bash
    npm start
    ```
