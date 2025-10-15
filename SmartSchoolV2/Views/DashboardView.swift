@@ -9,6 +9,7 @@ import SwiftUI
 
 struct DashboardView: View {
     var user: User?
+    @State private var selectedSchoolCode: String?
     
     var body: some View {
         TabView {
@@ -41,16 +42,43 @@ struct DashboardView: View {
                 }
         }
         .accentColor(.blue)
+        .onAppear {
+            self.selectedSchoolCode = user?.schoolCode
+        }
     }
 }
 
 struct HomeView: View {
     var user: User?
+    @StateObject private var viewModel = DashboardViewModel()
+    @State private var selectedSchoolCode: String?
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
+                    // School Selection Dropdown - Prominently placed at the top
+                    if let schools = user?.availableSchools, !schools.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Current School")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.secondary)
+                            
+                            Picker("Select School", selection: $selectedSchoolCode) {
+                                ForEach(schools, id: \.schoolCode) { school in
+                                    Text(school.schoolName)
+                                        .tag(school.schoolCode as String?)
+                                }
+                            }
+                            .pickerStyle(MenuPickerStyle())
+                            .padding(12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(10)
+                        }
+                        .padding(.horizontal)
+                    }
+                    
                     // Welcome Card
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -149,6 +177,24 @@ struct HomeView: View {
                 .padding()
             }
             .navigationTitle("Dashboard")
+            .onAppear {
+                // Initialize selected school code
+                selectedSchoolCode = user?.schoolCode
+                print("User available schools count: \(user?.availableSchools.count ?? 0)")
+                if let schools = user?.availableSchools {
+                    print("Available schools: \(schools.map { $0.schoolName })")
+                }
+                viewModel.fetchPeriods(user: user)
+            }
+            .onDisappear {
+                viewModel.onDisappear()
+            }
+            .onChange(of: selectedSchoolCode) { newValue in
+                if let newSchoolCode = newValue {
+                    print("Selected school changed to: \(newSchoolCode)")
+                    // TODO: Add logic to handle school change
+                }
+            }
         }
     }
 }
@@ -193,10 +239,25 @@ struct AttendanceView: View {
                 // Display the current period at the top left
                 HStack {
                     if let period = viewModel.currentPeriod {
+                        Text("\(period.periodNo). Period (Current)")
+                            .font(.headline)
+                            .padding(.leading)
+                            .foregroundColor(.secondary)
+                    } else if let period = viewModel.selectedPeriod {
                         Text("\(period.periodNo). Period")
                             .font(.headline)
                             .padding(.leading)
                             .foregroundColor(.secondary)
+                    } else if !viewModel.periods.isEmpty {
+                        // If no period is selected but periods are loaded, show a picker
+                        Picker("Period", selection: $viewModel.selectedPeriod) {
+                            Text("Select Period").tag(nil as PeriodDef?)
+                            ForEach(viewModel.periods, id: \.id) { period in
+                                Text("\(period.periodNo). Period").tag(period as PeriodDef?)
+                            }
+                        }
+                        .pickerStyle(MenuPickerStyle())
+                        .padding(.leading)
                     }
                     Spacer()
                 }
@@ -446,7 +507,11 @@ struct DashboardView_Previews: PreviewProvider {
             fullName: "Test Teacher User",
             role: "Teacher",
             schoolCode: "SC001",
-            accessToken: "mock_token"
+            accessToken: "mock_token",
+            availableSchools: [
+                SchoolProfile(schoolCode: "SC001", schoolName: "Oakwood High", role: "Teacher"),
+                SchoolProfile(schoolCode: "SC002", schoolName: "Maple Elementary", role: "Teacher")
+            ]
         ))
     }
 }

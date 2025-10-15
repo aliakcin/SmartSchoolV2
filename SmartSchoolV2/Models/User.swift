@@ -7,13 +7,17 @@
 
 import Foundation
 
-struct User: Codable {
+// User model
+struct User: Codable, Identifiable {
     let userId: Int
     let username: String
     let fullName: String
     let role: String
     let schoolCode: String
-    let accessToken: String?
+    let accessToken: String
+    let availableSchools: [SchoolProfile]
+    
+    var id: Int { userId }
     
     enum CodingKeys: String, CodingKey {
         case userId = "userId"
@@ -22,5 +26,6 @@ struct User: Codable {
         case role = "role"
         case schoolCode = "schoolCode"
         case accessToken = "accessToken"
+        case availableSchools = "availableSchools"
     }
 }

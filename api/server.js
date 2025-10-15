@@ -71,40 +71,48 @@ function authorizeRole(roles) {
   };
 }
 
-// Routes
-
-// Login endpoint
+// --- UPDATED LOGIN ENDPOINT ---
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { username, password, schoolCode } = req.body;
+    const { username, password } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const userCredentialResult = await pool.request()
+    // 1. Find all credentials for this username across all schools
+    const credentialsResult = await pool.request()
       .input('username', sql.NVarChar, username)
-      .input('schoolCode', sql.NVarChar, schoolCode || 'SC001')
-      .query('SELECT * FROM UserCredential WHERE Username = @username AND SchoolCode = @schoolCode');
+      .query(`
+        SELECT uc.UserId, uc.SchoolCode, uc.PassHash, uc.Role, uc.IsLocked, s.SchoolName
+        FROM UserCredential uc
+        JOIN School s ON uc.SchoolCode = s.SchoolCode
+        WHERE uc.Username = @username
+      `);
 
-    const userCredential = userCredentialResult.recordset[0];
-
-    if (!userCredential) {
+    if (credentialsResult.recordset.length === 0) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
-    if (userCredential.IsLocked) {
-      return res.status(403).json({ error: 'Account is locked. Please contact administrator.' });
+    // 2. Find the first valid password match
+    let validCredential = null;
+    for (const cred of credentialsResult.recordset) {
+      if (!cred.IsLocked) {
+        const isPasswordValid = await bcrypt.compare(password, cred.PassHash);
+        if (isPasswordValid) {
+          validCredential = cred;
+          break; // Stop after finding the first valid password
+        }
+      }
     }
-
-    const isPasswordValid = await bcrypt.compare(password, userCredential.PassHash);
-
-    if (!isPasswordValid) {
+    
+    if (!validCredential) {
         return res.status(401).json({ error: 'Invalid username or password' });
     }
 
+    // 3. Get user person details
     const userPersonResult = await pool.request()
-      .input('userId', sql.Int, userCredential.UserId)
+      .input('userId', sql.Int, validCredential.UserId)
       .query('SELECT * FROM UserPerson WHERE UserId = @userId');
       
     const userPerson = userPersonResult.recordset[0];
@@ -113,28 +121,41 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(500).json({ error: 'User profile not found' });
     }
 
+    // 4. Prepare the list of available schools for this user
+    const availableSchools = credentialsResult.recordset.map(cred => ({
+        schoolCode: cred.SchoolCode,
+        schoolName: cred.SchoolName,
+        role: cred.Role
+    }));
+
+    // 5. Select the default school (lowest school code) and generate a token for it
+    const defaultSchool = availableSchools.sort((a, b) => a.schoolCode.localeCompare(b.schoolCode))[0];
+    
     await pool.request()
-      .input('credentialId', sql.Int, userCredential.CredentialId)
-      .query('UPDATE UserCredential SET LastLoginAt = GETUTCDATE() WHERE CredentialId = @credentialId');
+        .input('userId', sql.Int, validCredential.UserId)
+        .input('schoolCode', sql.NVarChar, defaultSchool.schoolCode)
+        .query('UPDATE UserCredential SET LastLoginAt = GETUTCDATE() WHERE UserId = @userId AND SchoolCode = @schoolCode');
 
     const token = jwt.sign(
       {
-        userId: userCredential.UserId,
-        username: userCredential.Username,
-        schoolCode: userCredential.SchoolCode,
-        role: userCredential.Role
+        userId: validCredential.UserId,
+        username: username,
+        schoolCode: defaultSchool.schoolCode,
+        role: defaultSchool.role
       },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
+    // 6. Build the final user object
     const userData = {
-      userId: userCredential.UserId,
-      username: userCredential.Username,
+      userId: validCredential.UserId,
+      username: username,
       fullName: userPerson.FullName,
-      role: userCredential.Role,
-      schoolCode: userCredential.SchoolCode,
-      accessToken: token
+      role: defaultSchool.role,
+      schoolCode: defaultSchool.schoolCode,
+      accessToken: token,
+      availableSchools: availableSchools
     };
 
     res.json({ message: 'Login successful', user: userData });
@@ -145,9 +166,55 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// --- NEW ENDPOINT FOR SWITCHING SCHOOLS ---
+app.post('/api/auth/switch-school', authenticateToken, async (req, res) => {
+    try {
+        const { newSchoolCode } = req.body;
+        const { userId, username } = req.user; // Get user info from the current valid token
+
+        if (!newSchoolCode) {
+            return res.status(400).json({ error: 'newSchoolCode is required' });
+        }
+
+        // 1. Verify the user has credentials for the requested school
+        const credentialResult = await pool.request()
+            .input('userId', sql.Int, userId)
+            .input('schoolCode', sql.NVarChar, newSchoolCode)
+            .query('SELECT Role FROM UserCredential WHERE UserId = @userId AND SchoolCode = @schoolCode');
+        
+        const newCredential = credentialResult.recordset[0];
+
+        if (!newCredential) {
+            return res.status(403).json({ error: 'User does not have access to the requested school.' });
+        }
+
+        // 2. Generate a new token with the updated school code and role
+        const newToken = jwt.sign(
+            {
+                userId: userId,
+                username: username,
+                schoolCode: newSchoolCode,
+                role: newCredential.Role
+            },
+            JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+
+        res.json({
+            message: 'Switched school successfully',
+            accessToken: newToken,
+            schoolCode: newSchoolCode,
+            role: newCredential.Role
+        });
+
+    } catch (error) {
+        console.error('Switch school error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 
 // STUDENTS API
-// Get all students
 app.get('/api/students', authenticateToken, async (req, res) => {
   try {
     const result = await pool.request().query('SELECT * FROM Student');
@@ -158,7 +225,6 @@ app.get('/api/students', authenticateToken, async (req, res) => {
   }
 });
 
-// Get student by ID
 app.get('/api/students/:id', authenticateToken, async (req, res) => {
   try {
     const result = await pool.request()
@@ -177,7 +243,6 @@ app.get('/api/students/:id', authenticateToken, async (req, res) => {
 
 
 // STUDENT ACADEMICS API
-// Get student academics by student ID
 app.get('/api/student-academics/student/:studentId', authenticateToken, async (req, res) => {
   try {
     const result = await pool.request()
@@ -192,7 +257,6 @@ app.get('/api/student-academics/student/:studentId', authenticateToken, async (r
 
 
 // COURSES API
-// Get all courses
 app.get('/api/courses', authenticateToken, async (req, res) => {
   try {
     const result = await pool.request().query('SELECT * FROM Course');
@@ -205,7 +269,6 @@ app.get('/api/courses', authenticateToken, async (req, res) => {
 
 
 // DEPARTMENTS API
-// Get all departments
 app.get('/api/departments', authenticateToken, async (req, res) => {
   try {
     const result = await pool.request().query('SELECT * FROM Department');
@@ -218,7 +281,6 @@ app.get('/api/departments', authenticateToken, async (req, res) => {
 
 
 // STUDENT COURSES (GRADES) API
-// Get grades for a student academic record
 app.get('/api/student-courses/student-academic/:studentAcademicId', authenticateToken, async (req, res) => {
   try {
     const result = await pool.request()
@@ -231,35 +293,20 @@ app.get('/api/student-courses/student-academic/:studentAcademicId', authenticate
   }
 });
 
-// Update/Create student course grades
 app.post('/api/student-courses', authenticateToken, authorizeRole(['Teacher', 'Admin']), async (req, res) => {
   try {
     const { studentAcademicId, courseKey, ...gradeData } = req.body;
-
     const request = pool.request()
         .input('studentAcademicId', sql.Int, studentAcademicId)
         .input('courseKey', sql.Int, courseKey)
         .input('updatedBy', sql.NVarChar, req.user.username);
-
-    // Dynamically build SET clause
-    const setClauses = Object.keys(gradeData)
-        .map(key => `${key} = @${key}`)
-        .join(', ');
-    
-    // Add inputs for all grade fields
+    const setClauses = Object.keys(gradeData).map(key => `${key} = @${key}`).join(', ');
     for (const [key, value] of Object.entries(gradeData)) {
-        // Simple type inference, can be improved
-        if (value === null) {
-            request.input(key, null);
-        } else if (typeof value === 'number') {
-            request.input(key, sql.Decimal(5, 2), value);
-        } else if (typeof value === 'boolean') {
-            request.input(key, sql.Bit, value);
-        } else {
-            request.input(key, sql.NVarChar, value);
-        }
+        if (value === null) { request.input(key, null); }
+        else if (typeof value === 'number') { request.input(key, sql.Decimal(5, 2), value); }
+        else if (typeof value === 'boolean') { request.input(key, sql.Bit, value); }
+        else { request.input(key, sql.NVarChar, value); }
     }
-
     const query = `
       MERGE StudentCourse AS target
       USING (SELECT @studentAcademicId AS StudentAcademicId, @courseKey AS CourseKey) AS source
@@ -269,10 +316,8 @@ app.post('/api/student-courses', authenticateToken, authorizeRole(['Teacher', 'A
       WHEN NOT MATCHED THEN
         INSERT (StudentAcademicId, CourseKey, ${Object.keys(gradeData).join(', ')}, UpdatedAtUtc, UpdatedBy)
         VALUES (@studentAcademicId, @courseKey, ${Object.keys(gradeData).map(k => `@${k}`).join(', ')}, GETUTCDATE(), @updatedBy);
-      
       SELECT * FROM StudentCourse WHERE StudentAcademicId = @studentAcademicId AND CourseKey = @courseKey;
     `;
-    
     const result = await request.query(query);
     res.json(result.recordset[0]);
   } catch (error) {
@@ -283,11 +328,9 @@ app.post('/api/student-courses', authenticateToken, authorizeRole(['Teacher', 'A
 
 
 // TEACHER COURSES API
-// Get courses taught by a teacher
 app.get('/api/teacher-courses/:userId', authenticateToken, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
-
     const result = await pool.request()
       .input('userId', sql.Int, userId)
       .query(`
@@ -296,7 +339,6 @@ app.get('/api/teacher-courses/:userId', authenticateToken, async (req, res) => {
         INNER JOIN InstructorCourseMap icm ON c.CourseKey = icm.CourseKey
         WHERE icm.UserId = @userId AND icm.IsActive = 1
       `);
-      
     res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching teacher courses:', error);
@@ -304,7 +346,6 @@ app.get('/api/teacher-courses/:userId', authenticateToken, async (req, res) => {
   }
 });
 
-// Get departments/classes taught by a teacher
 app.get('/api/teacher-departments/:userId', authenticateToken, async (req, res) => {
     try {
         const userId = parseInt(req.params.userId, 10);
@@ -329,33 +370,22 @@ app.get('/api/teacher-departments/:userId', authenticateToken, async (req, res) 
 app.get('/api/grade-entry-roster/:userId/:departmentKey/:courseKey', authenticateToken, authorizeRole(['Teacher', 'Admin']), async (req, res) => {
   try {
     const { userId, departmentKey, courseKey } = req.params;
-
     const result = await pool.request()
       .input('userId', sql.Int, userId)
       .input('departmentKey', sql.Int, departmentKey)
       .input('courseKey', sql.Int, courseKey)
       .query(`
         SELECT 
-          sa.SchoolCode,
-          sa.DepartmentKey,
-          @courseKey AS CourseKey,
-          sa.Id AS StudentAcademicId,
-          s.Id AS StudentId,
-          s.FirstName,
-          s.LastName,
-          sc.HomeWork1, sc.Midterm1, sc.Final1,
-          sc.HomeWork2, sc.Midterm2, sc.Final2,
-          sc.LetterGrade1, sc.LetterGrade2,
-          sc.EffortGrade1, sc.EffortGrade2,
-          sc.IsNumber,
-          sc.UpdatedAtUtc,
-          sc.UpdatedBy
+          sa.SchoolCode, sa.DepartmentKey, @courseKey AS CourseKey, sa.Id AS StudentAcademicId,
+          s.Id AS StudentId, s.FirstName, s.LastName,
+          sc.HomeWork1, sc.Midterm1, sc.Final1, sc.HomeWork2, sc.Midterm2, sc.Final2,
+          sc.LetterGrade1, sc.LetterGrade2, sc.EffortGrade1, sc.EffortGrade2,
+          sc.IsNumber, sc.UpdatedAtUtc, sc.UpdatedBy
         FROM StudentAcademic sa
         INNER JOIN Student s ON sa.StudentId = s.Id
         LEFT JOIN StudentCourse sc ON sa.Id = sc.StudentAcademicId AND sc.CourseKey = @courseKey
-        WHERE sa.DepartmentKey = @departmentKey AND sa.Status = 1 -- Assuming 1 is active
+        WHERE sa.DepartmentKey = @departmentKey AND sa.Status = 1
       `);
-
     res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching grade entry roster:', error);
@@ -364,8 +394,7 @@ app.get('/api/grade-entry-roster/:userId/:departmentKey/:courseKey', authenticat
 });
 
 
-// STUDENT ATTENDANCE API (NEW)
-// Get attendance for a student academic record
+// STUDENT ATTENDANCE API
 app.get('/api/student-attendance/student-academic/:studentAcademicId', authenticateToken, async (req, res) => {
     try {
         const result = await pool.request()
@@ -378,7 +407,6 @@ app.get('/api/student-attendance/student-academic/:studentAcademicId', authentic
     }
 });
 
-// Add or update an attendance record
 app.post('/api/student-attendance', authenticateToken, authorizeRole(['Teacher', 'Admin']), async (req, res) => {
     try {
         const { studentAcademicId, courseKey, attendanceDate, periodNo, status, note } = req.body;
@@ -399,7 +427,6 @@ app.post('/api/student-attendance', authenticateToken, authorizeRole(['Teacher',
                 WHEN NOT MATCHED THEN
                     INSERT (StudentAcademicId, CourseKey, AttendanceDate, PeriodNo, Status, Note, UpdatedAtUtc, UpdatedBy)
                     VALUES (@studentAcademicId, @courseKey, @attendanceDate, @periodNo, @status, @note, GETUTCDATE(), @updatedBy);
-                
                 SELECT * FROM StudentAttendance WHERE StudentAcademicId = @studentAcademicId AND AttendanceDate = @attendanceDate AND PeriodNo = @periodNo;
             `);
         res.json(result.recordset[0]);
@@ -411,7 +438,6 @@ app.post('/api/student-attendance', authenticateToken, authorizeRole(['Teacher',
 
 
 // TIMETABLE API
-// Get timetable for a teacher
 app.get('/api/timetable/teacher/:teacherUId', authenticateToken, async (req, res) => {
   try {
     const result = await pool.request()

@@ -15,76 +15,135 @@ struct LoginView: View {
         NavigationView {
             ZStack {
                 // Background
-                LinearGradient(gradient: Gradient(colors: [Color.blue.opacity(0.7), Color.purple.opacity(0.7)]), startPoint: .top, endPoint: .bottom)
+                Color(red: 41/255, green: 42/255, blue: 48/255)
                     .ignoresSafeArea()
                 
                 // Content
-                VStack(spacing: 30) {
-                    // App Logo/Title
+                VStack {
+                    // Header
                     VStack(spacing: 10) {
-                        Image(systemName: "book.closed.fill")
-                            .font(.system(size: 60))
-                            .foregroundColor(.white)
-                        Text("Smart School")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                        Text("Education Management System")
-                            .font(.subheadline)
-                            .foregroundColor(.white.opacity(0.9))
+                        HStack {
+                            Image(systemName: "checkmark.square.fill")
+                                .font(.largeTitle)
+                                .foregroundColor(.white)
+                            Text("Codebrotherhood")
+                                .font(.largeTitle)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        }
+                        Text("We make technology work for you!")
+                            .font(.caption)
+                            .foregroundColor(.gray)
                     }
-                    .padding(.bottom, 20)
+                    .padding(.top, 50)
+                    .padding(.bottom, 30)
+                    
+                    // SmartSchool Logo
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Image(systemName: "play.fill")
+                            .font(.title)
+                            .foregroundColor(.gray)
+                            .padding(.trailing, 4)
+
+                        Text("Smart")
+                            .font(.largeTitle)
+                            .foregroundColor(.gray)
+                        +
+                        Text("School")
+                            .font(.largeTitle)
+                            .foregroundColor(Color(red: 9/255, green: 171/255, blue: 228/255))
+
+                        Text("v.15")
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .foregroundColor(.red)
+                            .padding(.leading, 5)
+                    }
+                    .padding(.bottom, 40)
+
                     
                     // Login Form
-                    VStack(spacing: 20) {
-                        // Username Field
-                        TextField("Username", text: $viewModel.username)
-                            .textContentType(.username)
-                            .autocapitalization(.none)
-                            .disableAutocorrection(true)
-                            .padding()
-                            .background(Color.white.opacity(0.9))
-                            .cornerRadius(10)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(Color.white, lineWidth: 1)
-                            )
+                    VStack(spacing: 15) {
+                        // Username
+                        HStack {
+                            Image(systemName: "person.fill")
+                                .foregroundColor(.gray)
+                                .padding(.leading, 15)
+                            
+                            ZStack(alignment: .leading) {
+                                if viewModel.username.isEmpty {
+                                    Text("Username")
+                                        .foregroundColor(.gray)
+                                }
+                                TextField("", text: $viewModel.username)
+                                    .textContentType(.username)
+                                    .autocapitalization(.none)
+                                    .disableAutocorrection(true)
+                                    .foregroundColor(.black)
+                            }
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 5)
+                        }
+                        .background(Color.white)
+                        .cornerRadius(8)
                         
-                        // Password Field
-                        SecureField("Password", text: $viewModel.password)
-                            .textContentType(.password)
-                            .padding()
-                            .background(Color.white.opacity(0.9))
-                            .cornerRadius(10)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(Color.white, lineWidth: 1)
-                            )
+                        // Password
+                        HStack {
+                            Image(systemName: "lock.fill")
+                                .foregroundColor(.gray)
+                                .padding(.leading, 15)
+                            
+                            ZStack(alignment: .leading) {
+                                if viewModel.password.isEmpty {
+                                    Text("Password")
+                                        .foregroundColor(.gray)
+                                }
+                                SecureField("", text: $viewModel.password)
+                                    .textContentType(.password)
+                                    .foregroundColor(.black)
+                            }
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 5)
+                        }
+                        .background(Color.white)
+                        .cornerRadius(8)
                         
-                        // Login Button
                         Button(action: {
                             viewModel.login()
                         }) {
                             HStack {
-                                Text("Sign In")
+                                Image(systemName: "lock.fill")
+                                    .foregroundColor(.orange)
+                                Text("SmartSchool v15 Login")
                                     .fontWeight(.semibold)
-                                if viewModel.isLoading {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                        .frame(width: 20, height: 20)
-                                }
+                                Spacer()
                             }
-                            .frame(maxWidth: .infinity)
                             .padding()
-                            .background(viewModel.isLoading ? Color.gray : Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
+                            .background(Color.white)
+                            .foregroundColor(.black)
+                            .cornerRadius(8)
                         }
                         .disabled(viewModel.isLoading)
+                        
+                        Button(action: {
+                            // Close the app
+                            exit(0)
+                        }) {
+                            HStack {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.red)
+                                Text("Close")
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                            .padding()
+                            .background(Color.white)
+                            .foregroundColor(.black)
+                            .cornerRadius(8)
+                        }
                     }
                     .padding(.horizontal, 30)
                     
-                    // Error Message
                     if let errorMessage = viewModel.errorMessage {
                         Text(errorMessage)
                             .foregroundColor(.red)
@@ -98,8 +157,26 @@ struct LoginView: View {
                     }
                     
                     Spacer()
+                    
+                    // Footer
+                    VStack {
+                        Text("KKTC's most preferred school management system")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Text("Codebrotherhood Software Solutions")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Text("www.codebrotherhood.com | www.smartschool4.com")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                    .padding(.bottom, 20)
                 }
-                .padding(.vertical, 50)
+            }
+            .navigationBarHidden(true)
+            .onAppear {
+                viewModel.username = "5840259698"
+                viewModel.password = "12345"
             }
             .onReceive(viewModel.$isLoggedIn) { isLoggedIn in
                 if isLoggedIn {

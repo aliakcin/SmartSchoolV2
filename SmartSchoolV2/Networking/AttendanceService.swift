@@ -7,13 +7,6 @@
 
 import Foundation
 
-struct AttendanceRecord: Identifiable, Codable {
-    let id = UUID()
-    let studentId: Int
-    let studentName: String
-    var status: AttendanceStatus
-}
-
 struct Period: Identifiable, Codable {
     let id: Int
     let periodNo: Int
@@ -34,13 +27,6 @@ struct Student: Identifiable, Codable {
     let firstName: String
     let lastName: String
     let fullName: String
-}
-
-enum AttendanceStatus: String, CaseIterable, Codable {
-    case present = "Present"
-    case absent = "Absent"
-    case late = "Late"
-    case excused = "Excused"
 }
 
 class AttendanceService {
