@@ -57,6 +57,33 @@ struct HomeView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
+                    // Current Period Display
+                    HStack {
+                        if viewModel.isLoadingPeriods {
+                            ProgressView()
+                            Text("Loading Schedule...")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 8)
+                        } else if let period = viewModel.currentPeriod {
+                            Image(systemName: "clock.fill")
+                                .foregroundColor(.green)
+                            Text("Current Period: \(period.periodNo)")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                        } else {
+                            Image(systemName: "moon.stars.fill")
+                                .foregroundColor(.orange)
+                            Text(viewModel.periods.isEmpty ? "No Schedule Loaded" : "It's not school time")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(10)
+                    
                     // School Selection Dropdown - Prominently placed at the top
                     if let schools = user?.availableSchools, !schools.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -236,20 +263,32 @@ struct AttendanceView: View {
     var body: some View {
         NavigationView {
             VStack {
-                // Display the current period at the top left
+                // Display the current period and status
                 HStack {
-                    if let period = viewModel.currentPeriod {
+                    if viewModel.isLoadingPeriods {
+                        ProgressView()
+                        Text("Loading Schedule...")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 8)
+                    } else if let period = viewModel.currentPeriod {
                         Text("\(period.periodNo). Period (Current)")
                             .font(.headline)
-                            .padding(.leading)
                             .foregroundColor(.secondary)
                     } else if let period = viewModel.selectedPeriod {
                         Text("\(period.periodNo). Period")
                             .font(.headline)
-                            .padding(.leading)
                             .foregroundColor(.secondary)
-                    } else if !viewModel.periods.isEmpty {
-                        // If no period is selected but periods are loaded, show a picker
+                    } else {
+                        Text(viewModel.periods.isEmpty ? "No Schedule Available" : "It's not school time")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    // Allow manual selection if periods are available
+                    if !viewModel.periods.isEmpty {
                         Picker("Period", selection: $viewModel.selectedPeriod) {
                             Text("Select Period").tag(nil as PeriodDef?)
                             ForEach(viewModel.periods, id: \.id) { period in
@@ -257,10 +296,9 @@ struct AttendanceView: View {
                             }
                         }
                         .pickerStyle(MenuPickerStyle())
-                        .padding(.leading)
                     }
-                    Spacer()
                 }
+                .padding()
 
                 if viewModel.isLoading && viewModel.attendanceRecords.isEmpty {
                     ProgressView("Loading...")

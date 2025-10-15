@@ -3,50 +3,47 @@ import Combine
 
 @MainActor
 class DashboardViewModel: ObservableObject {
+    @Published var periods: [PeriodDef] = []
     @Published var currentPeriod: PeriodDef?
-    @Published var isLoading = false
+    @Published var isLoadingPeriods = false
     @Published var errorMessage: String?
     
-    private var periods: [PeriodDef] = []
-    
-    // Timer to update the current period
     private var timer: Timer?
 
-    func fetchPeriods(user: User?) {
-        guard let user = user else {
-            errorMessage = "User not found."
-            return
+    init() {
+        // Start a timer to periodically check the current period
+        timer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+            self?.updateCurrentPeriod()
         }
+    }
+    
+    deinit {
+        timer?.invalidate()
+    }
+    
+    func onDisappear() {
+        // No need for cancellables with async/await
+    }
+    
+    func fetchPeriods(user: User?) {
+        guard let user = user else { return }
         
-        // Simple academic period for now, can be made dynamic later
-        let academicPeriod = "2025-2026"
-        
-        isLoading = true
-        errorMessage = nil
-        
+        isLoadingPeriods = true
+        let academicPeriod = "2025-2026" // This can be made dynamic later
+
         Task {
             do {
-                print("Fetching periods for user: \(user.username)...")
-                self.periods = try await APIService.shared.getPeriodDefinitions(
+                let fetchedPeriods = try await APIService.shared.getPeriodDefinitions(
                     schoolCode: user.schoolCode,
                     academicPeriod: academicPeriod,
                     token: user.accessToken
                 )
-                print("Successfully fetched \(self.periods.count) period definitions.")
-                
-                // Set up a timer to check for the current period every 60 seconds
-                self.timer?.invalidate()
-                self.timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-                    self?.updateCurrentPeriod()
-                }
-                // Initial update
+                self.periods = fetchedPeriods.sorted { $0.periodNo < $1.periodNo }
                 self.updateCurrentPeriod()
-                
             } catch {
-                errorMessage = "Failed to fetch periods: \(error.localizedDescription)"
-                print(error)
+                self.errorMessage = "Failed to load periods: \(error.localizedDescription)"
             }
-            isLoading = false
+            self.isLoadingPeriods = false
         }
     }
     
@@ -84,10 +81,5 @@ class DashboardViewModel: ObservableObject {
         
         // If no period is active
         self.currentPeriod = nil
-    }
-    
-    func onDisappear() {
-        timer?.invalidate()
-        timer = nil
     }
 }
