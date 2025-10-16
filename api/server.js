@@ -460,6 +460,23 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+app.get('/api/period-definitions/:schoolCode/:academicPeriod', authenticateToken, async (req, res) => {
+  try {
+    const { schoolCode, academicPeriod } = req.params;
+    
+    // Query the perioddef table
+    const result = await pool.request()
+      .input('schoolCode', sql.NVarChar, schoolCode)
+      .input('academicPeriod', sql.NVarChar, academicPeriod)
+      .query('SELECT * FROM perioddef WHERE SchoolCode = @schoolCode AND AcademicPeriod = @academicPeriod ORDER BY PeriodNo');
+    
+    res.json(result.recordset);
+  } catch (error) {
+    console.error('Error fetching period definitions:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Connect to database and start server
 connectToDatabase().then(() => {
   app.listen(PORT, () => {

@@ -57,6 +57,28 @@ struct HomeView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
+                    // Error Message Display
+                    if let errorMessage = viewModel.errorMessage {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundColor(.red)
+                            Text(errorMessage)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Spacer()
+                            Button(action: {
+                                viewModel.clearError()
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(10)
+                    }
+                    
                     // Current Period Display
                     HStack {
                         if viewModel.isLoadingPeriods {
@@ -71,10 +93,25 @@ struct HomeView: View {
                             Text("Current Period: \(period.periodNo)")
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
-                        } else {
+                        } else if viewModel.periods.isEmpty && viewModel.errorMessage == nil {
+                            // Only show "No Schedule Loaded" if we successfully loaded but have no data
                             Image(systemName: "moon.stars.fill")
                                 .foregroundColor(.orange)
-                            Text(viewModel.periods.isEmpty ? "No Schedule Loaded" : "It's not school time")
+                            Text("No Schedule Loaded")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                        } else if !viewModel.periods.isEmpty {
+                            // We have periods but none are currently active
+                            Image(systemName: "moon.stars.fill")
+                                .foregroundColor(.orange)
+                            Text("It's not school time")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                        } else {
+                            // This shouldn't happen, but just in case
+                            Image(systemName: "questionmark")
+                                .foregroundColor(.gray)
+                            Text("Schedule status unknown")
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                         }
@@ -534,22 +571,5 @@ struct ProfileRow: View {
                 .foregroundColor(.secondary)
         }
         .padding(.vertical, 2)
-    }
-}
-
-struct DashboardView_Previews: PreviewProvider {
-    static var previews: some View {
-        DashboardView(user: User(
-            userId: 35,
-            username: "test.teacher",
-            fullName: "Test Teacher User",
-            role: "Teacher",
-            schoolCode: "SC001",
-            accessToken: "mock_token",
-            availableSchools: [
-                SchoolProfile(schoolCode: "SC001", schoolName: "Oakwood High", role: "Teacher"),
-                SchoolProfile(schoolCode: "SC002", schoolName: "Maple Elementary", role: "Teacher")
-            ]
-        ))
     }
 }

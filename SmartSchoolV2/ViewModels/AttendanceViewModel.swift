@@ -21,6 +21,18 @@ class AttendanceViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var timer: Timer?
     
+    // MARK: - Initialization
+    init() {
+        // Start a timer to periodically check the current period (every 30 seconds for more responsive updates)
+        timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            self?.updateCurrentPeriod()
+        }
+    }
+    
+    deinit {
+        timer?.invalidate()
+    }
+    
     // MARK: - Public Methods
     func setUser(_ user: User) {
         self.currentUser = user
@@ -31,10 +43,11 @@ class AttendanceViewModel: ObservableObject {
         guard let user = currentUser else { return }
         
         isLoadingPeriods = true
-        let academicPeriod = "2025-2026" // This can be made dynamic later
 
         Task {
             do {
+                // Hardcode academic year for now
+                let academicPeriod = "2025-2026"
                 let fetchedPeriods = try await APIService.shared.getPeriodDefinitions(
                     schoolCode: user.schoolCode,
                     academicPeriod: academicPeriod,
@@ -45,48 +58,23 @@ class AttendanceViewModel: ObservableObject {
             } catch {
                 self.errorMessage = "Failed to load periods: \(error.localizedDescription)"
             }
-            isLoadingPeriods = false
+            self.isLoadingPeriods = false
         }
     }
     
     private func updateCurrentPeriod() {
-        let now = Date()
-        let calendar = Calendar.current
-        let currentTimeComponents = calendar.dateComponents([.hour, .minute], from: now)
+        // Use the utility function to find the current period
+        let newCurrentPeriod = TimeUtils.findCurrentPeriod(from: periods)
         
-        guard let hour = currentTimeComponents.hour, let minute = currentTimeComponents.minute else { return }
-        
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        
-        for period in periods {
-            if let startTime = formatter.date(from: period.startTime),
-               let endTime = formatter.date(from: period.endTime) {
-                
-                let startComponents = calendar.dateComponents([.hour, .minute], from: startTime)
-                let endComponents = calendar.dateComponents([.hour, .minute], from: endTime)
-                
-                if let startHour = startComponents.hour, let startMinute = startComponents.minute,
-                   let endHour = endComponents.hour, let endMinute = endComponents.minute {
-                    
-                    let currentTimeInMinutes = hour * 60 + minute
-                    let startTimeInMinutes = startHour * 60 + startMinute
-                    let endTimeInMinutes = endHour * 60 + endMinute
-
-                    if currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes < endTimeInMinutes {
-                        self.currentPeriod = period
-                        // Also set selectedPeriod if none is selected
-                        if self.selectedPeriod == nil {
-                            self.selectedPeriod = period
-                        }
-                        return
-                    }
-                }
+        // Only update if it's actually changed to avoid unnecessary UI updates
+        if self.currentPeriod?.id != newCurrentPeriod?.id {
+            self.currentPeriod = newCurrentPeriod
+            
+            // Also set selectedPeriod if none is selected or if current period changed
+            if self.selectedPeriod == nil || newCurrentPeriod != nil {
+                self.selectedPeriod = newCurrentPeriod
             }
         }
-        
-        // If no period is active
-        self.currentPeriod = nil
     }
 
     func loadDepartments() {
@@ -163,9 +151,5 @@ class AttendanceViewModel: ObservableObject {
     
     func clearError() {
         errorMessage = nil
-    }
-    
-    deinit {
-        timer?.invalidate()
     }
 }

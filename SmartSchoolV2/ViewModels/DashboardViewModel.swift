@@ -9,10 +9,11 @@ class DashboardViewModel: ObservableObject {
     @Published var errorMessage: String?
     
     private var timer: Timer?
+    private var currentUser: User?
 
     init() {
-        // Start a timer to periodically check the current period
-        timer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+        // Start a timer to periodically check the current period (every 30 seconds for more responsive updates)
+        timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             self?.updateCurrentPeriod()
         }
     }
@@ -28,11 +29,16 @@ class DashboardViewModel: ObservableObject {
     func fetchPeriods(user: User?) {
         guard let user = user else { return }
         
+        self.currentUser = user
         isLoadingPeriods = true
-        let academicPeriod = "2025-2026" // This can be made dynamic later
 
         Task {
+            // Synchronize time with the server first
+            await TimeManager.shared.synchronizeTime()
+            
             do {
+                // Hardcode academic year for now
+                let academicPeriod = "2025-2026"
                 let fetchedPeriods = try await APIService.shared.getPeriodDefinitions(
                     schoolCode: user.schoolCode,
                     academicPeriod: academicPeriod,
@@ -48,38 +54,11 @@ class DashboardViewModel: ObservableObject {
     }
     
     private func updateCurrentPeriod() {
-        let now = Date()
-        let calendar = Calendar.current
-        let currentTimeComponents = calendar.dateComponents([.hour, .minute], from: now)
-        
-        guard let hour = currentTimeComponents.hour, let minute = currentTimeComponents.minute else { return }
-        
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        
-        for period in periods {
-            if let startTime = formatter.date(from: period.startTime),
-               let endTime = formatter.date(from: period.endTime) {
-                
-                let startComponents = calendar.dateComponents([.hour, .minute], from: startTime)
-                let endComponents = calendar.dateComponents([.hour, .minute], from: endTime)
-                
-                if let startHour = startComponents.hour, let startMinute = startComponents.minute,
-                   let endHour = endComponents.hour, let endMinute = endComponents.minute {
-                    
-                    let currentTimeInMinutes = hour * 60 + minute
-                    let startTimeInMinutes = startHour * 60 + startMinute
-                    let endTimeInMinutes = endHour * 60 + endMinute
-
-                    if currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes < endTimeInMinutes {
-                        self.currentPeriod = period
-                        return
-                    }
-                }
-            }
-        }
-        
-        // If no period is active
-        self.currentPeriod = nil
+        // Use the utility function to find the current period
+        self.currentPeriod = TimeUtils.findCurrentPeriod(from: periods)
+    }
+    
+    func clearError() {
+        errorMessage = nil
     }
 }
