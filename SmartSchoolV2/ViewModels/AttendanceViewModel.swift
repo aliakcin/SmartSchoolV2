@@ -54,6 +54,7 @@ class AttendanceViewModel: ObservableObject {
                     token: user.accessToken
                 )
                 self.periods = fetchedPeriods.sorted { $0.periodNo < $1.periodNo }
+                print("AttendanceViewModel: Fetched \(self.periods.count) periods")
                 self.updateCurrentPeriod()
             } catch {
                 self.errorMessage = "Failed to load periods: \(error.localizedDescription)"
@@ -63,8 +64,17 @@ class AttendanceViewModel: ObservableObject {
     }
     
     private func updateCurrentPeriod() {
-        // Use the utility function to find the current period
-        let newCurrentPeriod = TimeUtils.findCurrentPeriod(from: periods)
+        print("=== AttendanceViewModel: Updating current period ===")
+        print("Number of periods: \(periods.count)")
+        
+        // Print current time for debugging
+        let currentTimeString = TimeUtils.getCurrentTimeString()
+        print("Current time: \(currentTimeString)")
+        
+        // Use the utility function to find the current period with seconds precision
+        let newCurrentPeriod = TimeUtils.findCurrentPeriodWithSeconds(from: periods)
+        
+        print("Found current period: \(newCurrentPeriod?.periodNo ?? -1)")
         
         // Only update if it's actually changed to avoid unnecessary UI updates
         if self.currentPeriod?.id != newCurrentPeriod?.id {

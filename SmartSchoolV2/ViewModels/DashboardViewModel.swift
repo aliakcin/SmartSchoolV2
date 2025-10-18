@@ -45,6 +45,7 @@ class DashboardViewModel: ObservableObject {
                     token: user.accessToken
                 )
                 self.periods = fetchedPeriods.sorted { $0.periodNo < $1.periodNo }
+                print("Fetched \(self.periods.count) periods")
                 self.updateCurrentPeriod()
             } catch {
                 self.errorMessage = "Failed to load periods: \(error.localizedDescription)"
@@ -54,8 +55,21 @@ class DashboardViewModel: ObservableObject {
     }
     
     private func updateCurrentPeriod() {
-        // Use the utility function to find the current period
-        self.currentPeriod = TimeUtils.findCurrentPeriod(from: periods)
+        print("=== Updating current period ===")
+        print("Number of periods: \(periods.count)")
+        
+        // Print current time for debugging
+        let currentTimeString = TimeUtils.getCurrentTimeString()
+        print("Current time: \(currentTimeString)")
+        
+        // Use the utility function to find the current period with seconds precision
+        self.currentPeriod = TimeUtils.findCurrentPeriodWithSeconds(from: periods)
+        
+        if let currentPeriod = self.currentPeriod {
+            print("Current period found: \(currentPeriod.periodNo)")
+        } else {
+            print("No current period found")
+        }
     }
     
     func clearError() {

@@ -36,6 +36,8 @@ class TimeManager {
     /// This should be used for all time-sensitive calculations.
     func getCurrentTime() -> Date {
         // Add the calculated offset to the current device time to get the synchronized server time.
-        return Date().addingTimeInterval(serverTimeOffset)
+        let adjustedTime = Date().addingTimeInterval(serverTimeOffset)
+        print("Device time: \(Date()), Adjusted time: \(adjustedTime), Offset: \(serverTimeOffset)")
+        return adjustedTime
     }
 }

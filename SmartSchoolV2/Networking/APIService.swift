@@ -85,6 +85,7 @@ class APIService {
     // Specific function to fetch period definitions
     func getPeriodDefinitions(schoolCode: String, academicPeriod: String, token: String) async throws -> [PeriodDef] {
         let endpoint = "/period-definitions/\(schoolCode)/\(academicPeriod)"
+        print("Fetching period definitions from: \(baseURL)\(endpoint)")
         return try await request(endpoint: endpoint, token: token)
     }
     
