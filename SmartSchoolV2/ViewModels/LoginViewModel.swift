@@ -35,6 +35,10 @@ class LoginViewModel: ObservableObject {
                 case .success(let user):
                     self?.user = user
                     self?.isLoggedIn = true
+                    UserDefaults.standard.set(user.accessToken, forKey: "accessToken")
+                    if let userData = try? JSONEncoder().encode(user) {
+                        UserDefaults.standard.set(userData, forKey: "currentUser")
+                    }
                 case .failure(let error):
                     self?.errorMessage = error.localizedDescription
                 }

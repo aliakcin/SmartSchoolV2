@@ -437,12 +437,30 @@ app.post('/api/student-attendance', authenticateToken, authorizeRole(['Teacher',
 });
 
 
-// TIMETABLE API
 app.get('/api/timetable/teacher/:teacherUId', authenticateToken, async (req, res) => {
   try {
     const result = await pool.request()
       .input('teacherUId', sql.NVarChar, req.params.teacherUId)
       .query('SELECT * FROM TimeTable WHERE TeacherUId = @teacherUId');
+    res.json(result.recordset);
+  } catch (error) {
+    console.error('Error fetching teacher timetable:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/timetable/my-schedule', authenticateToken, async (req, res) => {
+  try {
+    const { userId, schoolCode } = req.user;
+    const result = await pool.request()
+      .input('userId', sql.Int, userId)
+      .input('schoolCode', sql.NVarChar, schoolCode)
+      .query(`
+        SELECT tt.* 
+        FROM TimeTable AS tt
+        INNER JOIN UserCredential AS uc ON tt.TeacherUId = uc.AscTeacherUid AND tt.SchoolCode = uc.SchoolCode
+        WHERE uc.UserId = @userId AND uc.SchoolCode = @schoolCode
+      `);
     res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching teacher timetable:', error);

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct DashboardView: View {
     var user: User?
+    var onLogout: () -> Void
     @State private var selectedSchoolCode: String?
     
     var body: some View {
@@ -35,7 +36,7 @@ struct DashboardView: View {
                 }
             
             // Profile Tab
-            ProfileView(user: user)
+            ProfileView(user: user, onLogout: onLogout)
                 .tabItem {
                     Image(systemName: "person")
                     Text("Profile")
@@ -487,29 +488,9 @@ struct DepartmentSelectionView: View {
     }
 }
 
-struct ScheduleView: View {
-    var body: some View {
-        NavigationView {
-            VStack {
-                Image(systemName: "calendar")
-                    .font(.largeTitle)
-                    .foregroundColor(.blue)
-                Text("Schedule")
-                    .font(.title)
-                    .padding()
-                Text("Class schedule and timetable features will be implemented here")
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding()
-                Spacer()
-            }
-            .navigationTitle("Schedule")
-        }
-    }
-}
-
 struct ProfileView: View {
     var user: User?
+    var onLogout: () -> Void
     
     var body: some View {
         NavigationView {
@@ -546,6 +527,19 @@ struct ProfileView: View {
                 .cornerRadius(15)
                 .shadow(radius: 2)
                 
+                Button(action: {
+                    onLogout()
+                }) {
+                    HStack {
+                        Image(systemName: "arrow.left.square.fill")
+                            .foregroundColor(.red)
+                        Text("Log Out")
+                            .fontWeight(.semibold)
+                            .foregroundColor(.red)
+                    }
+                }
+                .padding()
+
                 Spacer()
             }
             .padding()

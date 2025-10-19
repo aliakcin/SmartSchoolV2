@@ -1,15 +1,8 @@
-//
-//  LoginView.swift
-//  SmartSchoolV2
-//
-//  Created by Developer on 2025.
-//
-
 import SwiftUI
 
 struct LoginView: View {
     @StateObject private var viewModel = LoginViewModel()
-    @State private var showingDashboard = false
+    var onLoginSuccess: (User) -> Void
     
     var body: some View {
         NavigationView {
@@ -126,7 +119,6 @@ struct LoginView: View {
                         .disabled(viewModel.isLoading)
                         
                         Button(action: {
-                            // Close the app
                             exit(0)
                         }) {
                             HStack {
@@ -179,12 +171,9 @@ struct LoginView: View {
                 viewModel.password = "12345"
             }
             .onReceive(viewModel.$isLoggedIn) { isLoggedIn in
-                if isLoggedIn {
-                    showingDashboard = true
+                if isLoggedIn, let user = viewModel.user {
+                    onLoginSuccess(user)
                 }
-            }
-            .fullScreenCover(isPresented: $showingDashboard) {
-                DashboardView(user: viewModel.user)
             }
         }
     }
@@ -192,6 +181,6 @@ struct LoginView: View {
 
 struct LoginView_Previews: PreviewProvider {
     static var previews: some View {
-        LoginView()
+        LoginView(onLoginSuccess: { _ in })
     }
 }

@@ -76,6 +76,11 @@ class AuthService {
             }
         }.resume()
     }
+    
+    func logout() {
+        UserDefaults.standard.removeObject(forKey: "accessToken")
+        UserDefaults.standard.removeObject(forKey: "currentUser")
+    }
 }
 
 enum AuthError: Error, LocalizedError {
