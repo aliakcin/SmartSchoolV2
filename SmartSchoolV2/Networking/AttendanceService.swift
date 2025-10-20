@@ -125,6 +125,52 @@ class AttendanceService {
             }
         }.resume()
     }
+    
+    // Fetch departments for current class (based on timetable)
+    func getDepartmentsForCurrentClass(for userId: Int, periodNo: Int, dayCode: String, completion: @escaping (Result<[Department], Error>) -> Void) {
+        guard let url = URL(string: "\(baseURL)/teacher-departments/\(userId)/period/\(periodNo)/day/\(dayCode)") else {
+            // Fallback to regular departments if specific endpoint doesn't exist
+            self.getDepartments(for: userId, completion: completion)
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                // Fallback to regular departments if specific endpoint fails
+                self.getDepartments(for: userId, completion: completion)
+                return
+            }
+
+            guard let data = data else {
+                // Fallback to regular departments if no data received
+                self.getDepartments(for: userId, completion: completion)
+                return
+            }
+
+            do {
+                let departmentsData = try JSONDecoder().decode([DepartmentData].self, from: data)
+                let departments = departmentsData.map { departmentData in
+                    Department(
+                        departmentKey: departmentData.departmentKey,
+                        departmentName: departmentData.departmentName,
+                        departmentCode: departmentData.departmentCode
+                    )
+                }
+                completion(.success(departments))
+            } catch {
+                // Fallback to regular departments if decoding fails
+                self.getDepartments(for: userId, completion: completion)
+            }
+        }.resume()
+    }
 
     // Fetch students for a department
     func getStudents(for departmentKey: Int, completion: @escaping (Result<[Student], Error>) -> Void) {

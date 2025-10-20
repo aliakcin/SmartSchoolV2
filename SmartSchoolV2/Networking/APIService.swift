@@ -89,6 +89,29 @@ class APIService {
         return try await request(endpoint: endpoint, token: token)
     }
     
+    // Function to fetch user's timetable
+    func getMySchedule(token: String) async throws -> [TimetableEntry] {
+        let endpoint = "/timetable/my-schedule"
+        print("Fetching timetable from: \(baseURL)\(endpoint)")
+        return try await request(endpoint: endpoint, token: token)
+    }
+
+    // Function to get CourseKey for a given course name
+    func getCourseKey(courseName: String, academicPeriod: String, token: String) async throws -> Int? {
+        let endpoint = "/course/key?courseName=\(courseName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&academicPeriod=\(academicPeriod)"
+        struct CourseKeyResponse: Decodable {
+            let CourseKey: Int
+        }
+        let response: CourseKeyResponse = try await request(endpoint: endpoint, token: token)
+        return response.CourseKey
+    }
+    
+    // Function to get students for a class session
+    func getStudentsForClass(courseKey: Int, classList: String, academicPeriod: String, token: String) async throws -> [StudentData] {
+        let endpoint = "/students/class?courseKey=\(courseKey)&classList=\(classList.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&academicPeriod=\(academicPeriod)"
+        return try await request(endpoint: endpoint, token: token)
+    }
+    
     // Function to get the server time from the health endpoint
     func getServerTime() async throws -> Date {
         let healthResponse: HealthResponse = try await request(endpoint: "/health", token: nil)

@@ -495,6 +495,220 @@ app.get('/api/period-definitions/:schoolCode/:academicPeriod', authenticateToken
   }
 });
 
+// NEW ENDPOINT: Get complete schedule with students for attendance
+app.get('/api/attendance/schedule/:userId', authenticateToken, authorizeRole(['Teacher', 'Admin']), async (req, res) => {
+    try {
+        const userId = parseInt(req.params.userId, 10);
+        
+        if (!userId) {
+            return res.status(400).json({ error: 'User ID is required' });
+        }
+        
+        // Get user information
+        const userResult = await pool.request()
+            .input('userId', sql.Int, userId)
+            .query(`
+                SELECT uc.AscTeacherUid, uc.Username, s.SchoolName, s.SchoolCode
+                FROM UserCredential uc
+                INNER JOIN School s ON uc.SchoolCode = s.SchoolCode
+                WHERE uc.UserId = @userId
+            `);
+        
+        if (userResult.recordset.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        const user = userResult.recordset[0];
+        
+        // Get the academic period
+        const academicPeriodResult = await pool.request()
+            .input('schoolCode', sql.NVarChar, user.SchoolCode)
+            .query(`
+                SELECT TOP 1 AcademicPeriod 
+                FROM TimeTable 
+                WHERE SchoolCode = @schoolCode
+                ORDER BY AcademicPeriod DESC
+            `);
+        
+        const academicPeriod = academicPeriodResult.recordset.length > 0 
+            ? academicPeriodResult.recordset[0].AcademicPeriod 
+            : new Date().getFullYear() + '-' + (new Date().getFullYear() + 1);
+        
+        // Get period definitions
+        const periodDefsResult = await pool.request()
+            .input('schoolCode', sql.NVarChar, user.SchoolCode)
+            .input('academicPeriod', sql.NVarChar, academicPeriod)
+            .query(`
+                SELECT 
+                    PeriodNo,
+                    StartTime,
+                    EndTime
+                FROM perioddef
+                WHERE SchoolCode = @schoolCode AND AcademicPeriod = @academicPeriod
+                ORDER BY PeriodNo
+            `);
+        
+        // Get timetable with period details
+        const timetableWithPeriodsResult = await pool.request()
+            .input('teacherUId', sql.NVarChar, user.AscTeacherUid)
+            .query(`
+                SELECT 
+                    tt.Id,
+                    tt.AcademicPeriod,
+                    tt.SchoolCode,
+                    tt.TeacherUId,
+                    tt.DayCode,
+                    tt.DayOfWeek,
+                    tt.PeriodNo,
+                    tt.SubjectName,
+                    tt.ClassList,
+                    tt.RoomShortName,
+                    pd.StartTime AS PeriodStartTime,
+                    pd.EndTime AS PeriodEndTime,
+                    s.SchoolName
+                FROM TimeTable tt
+                LEFT JOIN perioddef pd ON tt.SchoolCode = pd.SchoolCode 
+                    AND tt.AcademicPeriod = pd.AcademicPeriod 
+                    AND tt.PeriodNo = pd.PeriodNo
+                INNER JOIN School s ON tt.SchoolCode = s.SchoolCode
+                WHERE tt.TeacherUId = @teacherUId
+                ORDER BY tt.DayOfWeek, tt.PeriodNo
+            `);
+        
+        // Enhance timetable entries with student information
+        const enhancedTimetable = [];
+        for (const timetableEntry of timetableWithPeriodsResult.recordset) {
+            // Try to find the course that matches this timetable entry
+            const courseResult = await pool.request()
+                .input('courseName', sql.NVarChar, timetableEntry.SubjectName)
+                .input('userId', sql.Int, userId)
+                .query(`
+                    SELECT DISTINCT
+                        c.CourseKey,
+                        c.CourseId,
+                        c.CourseName,
+                        c.CourseNameEn
+                    FROM Course c
+                    INNER JOIN InstructorCourseMap icm ON c.CourseKey = icm.CourseKey
+                    WHERE c.CourseName = @courseName AND icm.UserId = @userId AND icm.IsActive = 1
+                `);
+            
+            let students = [];
+            if (courseResult.recordset.length > 0) {
+                const course = courseResult.recordset[0];
+                
+                // Get students enrolled in this course
+                const studentsResult = await pool.request()
+                    .input('userId', sql.Int, userId)
+                    .input('courseKey', sql.Int, course.CourseKey)
+                    .input('classList', sql.NVarChar, timetableEntry.ClassList)
+                    .query(`
+                        SELECT 
+                            s.Id AS StudentId,
+                            s.IdNumber,
+                            s.FirstName,
+                            s.LastName,
+                            s.Gender,
+                            sa.Id AS StudentAcademicId,
+                            sa.SmartId,
+                            sa.SchoolNumber,
+                            sa.ClassId,
+                            d.DepartmentName
+                        FROM StudentAcademic sa
+                        INNER JOIN Student s ON sa.StudentId = s.Id
+                        INNER JOIN StudentCourse sc ON sa.Id = sc.StudentAcademicId
+                        INNER JOIN Course c ON sc.CourseKey = c.CourseKey
+                        INNER JOIN InstructorCourseMap icm ON c.CourseKey = icm.CourseKey
+                        INNER JOIN Department d ON sa.DepartmentKey = d.DepartmentKey
+                        WHERE icm.UserId = @userId 
+                            AND c.CourseKey = @courseKey
+                            AND d.DepartmentName LIKE '%' + @classList + '%'
+                        ORDER BY s.LastName, s.FirstName
+                    `);
+                
+                students = studentsResult.recordset;
+                
+                // If no students found with class filter, get all students for this course
+                if (students.length === 0) {
+                    const allStudentsResult = await pool.request()
+                        .input('userId', sql.Int, userId)
+                        .input('courseKey', sql.Int, course.CourseKey)
+                        .query(`
+                            SELECT 
+                                s.Id AS StudentId,
+                                s.IdNumber,
+                                s.FirstName,
+                                s.LastName,
+                                s.Gender,
+                                sa.Id AS StudentAcademicId,
+                                sa.SmartId,
+                                sa.SchoolNumber,
+                                sa.ClassId,
+                                d.DepartmentName
+                            FROM StudentAcademic sa
+                            INNER JOIN Student s ON sa.StudentId = s.Id
+                            INNER JOIN StudentCourse sc ON sa.Id = sc.StudentAcademicId
+                            INNER JOIN Course c ON sc.CourseKey = c.CourseKey
+                            INNER JOIN InstructorCourseMap icm ON c.CourseKey = icm.CourseKey
+                            INNER JOIN Department d ON sa.DepartmentKey = d.DepartmentKey
+                            WHERE icm.UserId = @userId 
+                                AND c.CourseKey = @courseKey
+                            ORDER BY s.LastName, s.FirstName
+                        `);
+                    
+                    students = allStudentsResult.recordset;
+                }
+            } else {
+                // Even if no course found, try to get students based on class list
+                const classStudentsResult = await pool.request()
+                    .input('classList', sql.NVarChar, timetableEntry.ClassList)
+                    .query(`
+                        SELECT 
+                            s.Id AS StudentId,
+                            s.IdNumber,
+                            s.FirstName,
+                            s.LastName,
+                            s.Gender,
+                            sa.Id AS StudentAcademicId,
+                            sa.SmartId,
+                            sa.SchoolNumber,
+                            sa.ClassId,
+                            d.DepartmentName
+                        FROM StudentAcademic sa
+                        INNER JOIN Student s ON sa.StudentId = s.Id
+                        INNER JOIN Department d ON sa.DepartmentKey = d.DepartmentKey
+                        WHERE d.DepartmentName LIKE '%' + @classList + '%'
+                        ORDER BY s.LastName, s.FirstName
+                    `);
+                
+                students = classStudentsResult.recordset;
+            }
+            
+            enhancedTimetable.push({
+                ...timetableEntry,
+                students: students
+            });
+        }
+        
+        res.json({
+            user: {
+                userId: user.UserId,
+                username: user.Username,
+                ascTeacherUid: user.AscTeacherUid,
+                schoolName: user.SchoolName,
+                schoolCode: user.SchoolCode
+            },
+            academicPeriod: academicPeriod,
+            periods: periodDefsResult.recordset,
+            timetable: enhancedTimetable
+        });
+        
+    } catch (error) {
+        console.error('Error fetching attendance schedule:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Connect to database and start server
 connectToDatabase().then(() => {
   app.listen(PORT, () => {

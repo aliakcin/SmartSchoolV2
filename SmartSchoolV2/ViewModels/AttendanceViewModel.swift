@@ -7,13 +7,16 @@ class AttendanceViewModel: ObservableObject {
     @Published var departments: [Department] = []
     @Published var attendanceRecords: [AttendanceRecord] = []
     @Published var periods: [PeriodDef] = []
+    @Published var timetable: [TimetableEntry] = []
     @Published var currentPeriod: PeriodDef?
+    @Published var currentClass: TimetableEntry?
     
     @Published var selectedDepartment: Department?
     @Published var selectedPeriod: PeriodDef?
     
     @Published var isLoading = false
     @Published var isLoadingPeriods = false
+    @Published var isLoadingTimetable = false
     @Published var errorMessage: String?
     
     // MARK: - Private Properties
@@ -37,6 +40,7 @@ class AttendanceViewModel: ObservableObject {
     func setUser(_ user: User) {
         self.currentUser = user
         fetchPeriods()
+        fetchTimetable()
     }
 
     func fetchPeriods() {
@@ -63,97 +67,130 @@ class AttendanceViewModel: ObservableObject {
         }
     }
     
+    func fetchTimetable() {
+        guard let user = currentUser else { return }
+        
+        isLoadingTimetable = true
+        
+        Task {
+            do {
+                let fetchedTimetable = try await APIService.shared.getMySchedule(token: user.accessToken)
+                self.timetable = fetchedTimetable
+                print("AttendanceViewModel: Fetched \(self.timetable.count) timetable entries")
+                self.updateCurrentClass()
+            } catch {
+                self.errorMessage = "Failed to load timetable: \(error.localizedDescription)"
+            }
+            self.isLoadingTimetable = false
+        }
+    }
+    
     private func updateCurrentPeriod() {
         print("=== AttendanceViewModel: Updating current period ===")
-        print("Number of periods: \(periods.count)")
         
-        // Print current time for debugging
-        let currentTimeString = TimeUtils.getCurrentTimeString()
-        print("Current time: \(currentTimeString)")
-        
-        // Use the utility function to find the current period with seconds precision
         let newCurrentPeriod = TimeUtils.findCurrentPeriodWithSeconds(from: periods)
         
         print("Found current period: \(newCurrentPeriod?.periodNo ?? -1)")
         
-        // Only update if it's actually changed to avoid unnecessary UI updates
         if self.currentPeriod?.id != newCurrentPeriod?.id {
             self.currentPeriod = newCurrentPeriod
             
-            // Also set selectedPeriod if none is selected or if current period changed
             if self.selectedPeriod == nil || newCurrentPeriod != nil {
                 self.selectedPeriod = newCurrentPeriod
             }
+            
+            updateCurrentClass()
         }
     }
-
-    func loadDepartments() {
-        guard let user = currentUser else {
-            self.errorMessage = "Current user not found."
+    
+    private func updateCurrentClass() {
+        guard let currentPeriod = self.currentPeriod else {
+            self.currentClass = nil
+            self.attendanceRecords = []
+            return
+        }
+        
+        let calendar = Calendar.current
+        let dayOfWeek = calendar.component(.weekday, from: Date()) // Sunday = 1, Saturday = 7
+        
+        let matchingClass = timetable.first { entry in
+            return entry.periodNo == currentPeriod.periodNo && entry.dayOfWeek == dayOfWeek
+        }
+        
+        self.currentClass = matchingClass
+        
+        if let matchingClass {
+            print("Found current class: \(matchingClass.subjectName ?? "N/A") - \(matchingClass.classList ?? "N/A")")
+            // Automatically load students for the current class
+            loadStudentsForCurrentClass()
+        } else {
+            print("No class scheduled for period \(currentPeriod.periodNo) on day \(dayOfWeek)")
+            self.attendanceRecords = []
+        }
+    }
+    
+    func loadStudentsForCurrentClass() {
+        guard let currentClass = currentClass,
+              let subjectName = currentClass.subjectName,
+              let classList = currentClass.classList,
+              let user = currentUser else {
+            self.attendanceRecords = []
             return
         }
         
         isLoading = true
         errorMessage = nil
-        
-        // This should be updated to use APIService in the future.
-        AttendanceService.shared.getDepartments(for: user.userId) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-                switch result {
-                case .success(let departments):
-                    self?.departments = departments
-                case .failure(let error):
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            do {
+                let academicPeriod = "2025-2026" // Hardcoded for now
+                guard let courseKey = try await APIService.shared.getCourseKey(
+                    courseName: subjectName,
+                    academicPeriod: academicPeriod,
+                    token: user.accessToken
+                ) else {
+                    self.errorMessage = "Could not find course key for \(subjectName)"
+                    self.isLoading = false
+                    return
                 }
-            }
-        }
-    }
-    
-    func loadStudents() {
-        guard let department = selectedDepartment else { return }
-        
-        isLoading = true
-        errorMessage = nil
-        
-        // This should be updated to use APIService in the future.
-        AttendanceService.shared.getStudents(for: department.departmentKey) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-                switch result {
-                case .success(let students):
-                    self?.attendanceRecords = students.map { student in
-                        AttendanceRecord(
-                            id: student.studentId, // Use studentId as the stable ID
-                            studentId: student.studentId,
-                            studentName: student.fullName,
-                            status: .present
-                        )
-                    }
-                case .failure(let error):
-                    self?.errorMessage = error.localizedDescription
+                
+                let studentsData = try await APIService.shared.getStudentsForClass(
+                    courseKey: courseKey,
+                    classList: classList,
+                    academicPeriod: academicPeriod,
+                    token: user.accessToken
+                )
+                
+                self.attendanceRecords = studentsData.map { studentData in
+                    AttendanceRecord(
+                        id: studentData.id,
+                        studentId: studentData.id,
+                        studentName: "\(studentData.firstName) \(studentData.lastName)",
+                        status: .present
+                    )
                 }
+                
+            } catch {
+                self.errorMessage = "Failed to load students: \(error.localizedDescription)"
             }
+            self.isLoading = false
         }
     }
     
     func submitAttendance() {
-        guard let department = selectedDepartment else {
-            errorMessage = "Please select a class."
-            return
-        }
-        guard let period = selectedPeriod else {
-            errorMessage = "Please select a period before submitting."
+        // This logic will need to be updated based on how attendance is saved.
+        // For now, it's a placeholder.
+        guard !attendanceRecords.isEmpty else {
+            errorMessage = "No students to submit."
             return
         }
         
-        print("Submitting attendance for department: \(department.departmentName), Period: \(period.periodNo)")
+        print("Submitting attendance...")
         
         // TODO: Add actual API call to submit attendance records
+        // You'll need to send `attendanceRecords` data to the server.
         
         errorMessage = "Attendance submitted successfully!"
         
-        // Clear the message after a delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             self.errorMessage = nil
         }

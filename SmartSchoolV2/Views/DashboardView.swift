@@ -296,56 +296,21 @@ struct DashboardCard: View {
 struct AttendanceView: View {
     var user: User?
     @StateObject private var viewModel = AttendanceViewModel()
-    @State private var showingDepartmentSheet = false
     
     var body: some View {
         NavigationView {
             VStack {
-                // Display the current period and status
-                HStack {
-                    if viewModel.isLoadingPeriods {
-                        ProgressView()
-                        Text("Loading Schedule...")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                            .padding(.leading, 8)
-                    } else if let period = viewModel.currentPeriod {
-                        Text("\(period.periodNo). Period (Current)")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                    } else if let period = viewModel.selectedPeriod {
-                        Text("\(period.periodNo). Period")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                    } else {
-                        Text(viewModel.periods.isEmpty ? "No Schedule Available" : "It's not school time")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Spacer()
-                    
-                    // Allow manual selection if periods are available
-                    if !viewModel.periods.isEmpty {
-                        Picker("Period", selection: $viewModel.selectedPeriod) {
-                            Text("Select Period").tag(nil as PeriodDef?)
-                            ForEach(viewModel.periods, id: \.id) { period in
-                                Text("\(period.periodNo). Period").tag(period as PeriodDef?)
-                            }
-                        }
-                        .pickerStyle(MenuPickerStyle())
-                    }
-                }
-                .padding()
+                ClassInfoView(viewModel: viewModel)
+                    .padding()
 
-                if viewModel.isLoading && viewModel.attendanceRecords.isEmpty {
-                    ProgressView("Loading...")
+                if viewModel.isLoading {
+                    ProgressView("Loading Students...")
+                    Spacer()
                 } else if !viewModel.attendanceRecords.isEmpty {
                     AttendanceRecordList(viewModel: viewModel)
                 } else {
-                    // Spacer to push the EmptyAttendanceView to the center
                     Spacer()
-                    EmptyAttendanceView(viewModel: viewModel, showingDepartmentSheet: $showingDepartmentSheet)
+                    EmptyStateView(viewModel: viewModel)
                     Spacer()
                 }
             }
@@ -373,19 +338,6 @@ struct AttendanceView: View {
                     }
                 )
             }
-            .sheet(isPresented: $showingDepartmentSheet) {
-                DepartmentSelectionView(
-                    departments: viewModel.departments,
-                    onSelect: { department in
-                        viewModel.selectedDepartment = department
-                        viewModel.loadStudents()
-                        showingDepartmentSheet = false
-                    },
-                    onDismiss: {
-                        showingDepartmentSheet = false
-                    }
-                )
-            }
         }
     }
 }
@@ -395,39 +347,77 @@ extension String: Identifiable {
     public var id: String { self }
 }
 
-struct EmptyAttendanceView: View {
+struct ClassInfoView: View {
     @ObservedObject var viewModel: AttendanceViewModel
-    @Binding var showingDepartmentSheet: Bool
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if viewModel.isLoadingPeriods || viewModel.isLoadingTimetable {
+                 ProgressView("Loading Schedule...")
+            } else if let period = viewModel.currentPeriod {
+                Text("Current Period: \(period.periodNo) (\(period.periodName ?? ""))")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                
+                if let currentClass = viewModel.currentClass {
+                    VStack {
+                        Text(currentClass.subjectName ?? "Course")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        Text(currentClass.classList ?? "Class")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 5)
+                } else {
+                    Text("No class scheduled for this period.")
+                        .foregroundColor(.secondary)
+                }
+                
+            } else {
+                Text("Not during school hours.")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+}
+
+
+struct EmptyStateView: View {
+    @ObservedObject var viewModel: AttendanceViewModel
     
     var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 60))
-                .foregroundColor(.green)
-            
-            Text("Take Attendance")
-                .font(.title)
-                .fontWeight(.bold)
-            
-            Text("Select a class to begin taking attendance.")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            Button(action: {
-                viewModel.loadDepartments()
-                showingDepartmentSheet = true
-            }) {
-                Label("Select Class", systemImage: "person.2.fill")
-                    .font(.headline)
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
+            if viewModel.currentClass != nil && !viewModel.isLoading {
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(.orange)
+                Text("No Students Found")
+                    .font(.title)
+                    .fontWeight(.bold)
+                Text("There are no students enrolled in \(viewModel.currentClass?.subjectName ?? "this class").")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            } else {
+                Image(systemName: "moon.stars.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(.blue)
+                Text("No Active Class")
+                    .font(.title)
+                    .fontWeight(.bold)
+                Text("There is no class scheduled for the current time.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
             }
-            .padding()
         }
         .padding()
     }
@@ -451,39 +441,6 @@ struct AttendanceRecordList: View {
                     .frame(maxWidth: 120)
                 }
             }
-        }
-    }
-}
-
-struct DepartmentSelectionView: View {
-    let departments: [Department]
-    var onSelect: (Department) -> Void
-    var onDismiss: () -> Void
-    
-    var body: some View {
-        NavigationView {
-            List(departments) { department in
-                Button(action: {
-                    onSelect(department)
-                }) {
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(department.departmentName)
-                                .font(.headline)
-                            Text(department.departmentCode)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                    }
-                }
-            }
-            .navigationTitle("Select Class")
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    onDismiss()
-                }
-            )
         }
     }
 }
